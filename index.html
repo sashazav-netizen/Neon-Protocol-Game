@@ -193,8 +193,54 @@ body::before {
   box-shadow: 0 0 10px var(--freeze);
   filter: hue-rotate(160deg) brightness(1.3);
 }
+.card.taunt {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 10px rgba(255,215,0,0.5);
+}
+.card.enraged {
+  animation: enrageFlicker 0.5s ease-in-out infinite !important;
+}
+@keyframes enrageFlicker {
+  0%,100% { box-shadow: 0 0 16px var(--boss), 0 0 32px rgba(255,80,0,0.5); border-color: #ff4400 !important; }
+  50%     { box-shadow: 0 0 28px #ff0000, 0 0 56px rgba(255,0,0,0.7); border-color: #ff0000 !important; }
+}
 .card.entering { animation: cardSlide 0.25s ease-out; }
 @keyframes cardSlide { from { transform: translateY(20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+
+/* ===== Tooltip — מודל קלף ===== */
+.card-info-modal {
+  position: fixed; inset: 0; z-index: 9999;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+}
+.card-info-modal.active { display: flex; }
+.card-info-box {
+  background: #0a1525; border: 2px solid var(--corp);
+  border-radius: 12px; padding: 16px 20px; min-width: 200px;
+  text-align: center; color: var(--text);
+}
+.card-info-box .ci-icon { font-size: 2rem; margin-bottom: 6px; }
+.card-info-box .ci-name { font-weight: 900; color: #fff; font-size: 0.9rem; margin-bottom: 4px; }
+.card-info-box .ci-abil { color: var(--gold); font-size: 0.75rem; margin-bottom: 8px; }
+.card-info-box .ci-stats { font-family:'Share Tech Mono'; font-size: 0.8rem; opacity: 0.8; }
+
+/* ===== Random Event ===== */
+.random-event-overlay {
+  position: fixed; inset: 0; background: rgba(5,8,16,0.95);
+  z-index: 9990; display:none; flex-direction:column;
+  align-items:center; justify-content:center; text-align:center;
+  backdrop-filter: blur(8px);
+}
+.random-event-overlay.active { display:flex; animation: fadeIn 0.3s ease; }
+.event-box {
+  border: 2px solid var(--boss); border-radius: 16px;
+  background: rgba(0,0,0,0.95); padding: 2rem;
+  max-width: 320px; color: var(--boss);
+}
+.event-icon { font-size: 3rem; margin-bottom: 8px; }
+.event-title { font-family:'Orbitron'; font-size:1.1rem; font-weight:900; margin-bottom:8px; }
+.event-desc { font-size:0.8rem; color:var(--text); margin-bottom:16px; line-height:1.6; }
+.event-choices { display:flex; flex-direction:column; gap:8px; }
 
 .card-cost {
   font-size:0.5rem; background:var(--gold); color:#000;
@@ -359,6 +405,7 @@ body::before {
   display: none; flex-direction: column;
   align-items:center; justify-content:flex-start; text-align:center;
   padding:0; gap:0;
+  padding-bottom: 100px; /* מרווח לכפתורים הקבועים */
 }
 #shop-screen.active { display: flex; animation: fadeIn 0.3s ease; }
 .shop-header {
@@ -398,12 +445,15 @@ body::before {
   padding:1px 5px; border-radius:6px; font-weight:900;
 }
 
-/* ===== ניווט חנות — קבוע בתחתית ===== */
+/* ===== ניווט חנות — קבוע בתחתית המסך ===== */
 .shop-nav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
   display:flex; flex-direction:row; gap:10px;
-  padding:10px 16px 20px; flex-shrink:0; width:100%;
-  background: linear-gradient(to top, var(--bg) 80%, transparent);
+  padding:10px 16px 24px; 
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
   border-top:1px solid var(--border);
+  z-index: 9999;
 }
 .shop-nav-btn {
   flex:1; padding:10px 6px; border-radius:12px;
@@ -453,6 +503,7 @@ body::before {
     </div>
 
     <div class="high-score-bar">🏆 שיא: <span id="high-score-display">0</span> &nbsp;|&nbsp; 🎖️ שלב: <span id="best-level-display">1</span> &nbsp;|&nbsp; ★ ריצה: <span id="run-score-display">0</span></div>
+    <div id="artifact-bar" style="font-size:1.2rem; min-height:20px; letter-spacing:4px;"></div>
 
     <button class="game-btn" style="border-color:var(--text); color:var(--text); opacity:0.7;" onclick="toggleModal(true)">📖 איך משחקים</button>
     <div class="copyright-footer">CREATED MARCH 2026 BY ALEXANDER ZAVODISKER</div>
@@ -501,7 +552,7 @@ body::before {
 
       <div>
         <div class="zone-label">▲ שדה שחקן</div>
-        <div class="zone" id="zone-player">
+        <div class="zone" id="zone-player" onclick="if(event.target===this||event.target.id==='player-field'){state.sel=null;render();}">
           <div class="cards-row" id="player-field"></div>
           <div class="empty-zone-hint" id="player-hint">[ גרור קלף לכאן ]</div>
         </div>
@@ -548,6 +599,25 @@ body::before {
   <div class="synergy-banner" id="synergy-banner">⚡ SYNERGY BONUS ⚡</div>
   <!-- כפתור מוזיקה -->
   <button class="music-btn" id="music-btn" onclick="toggleMusic()" title="מוזיקה">🎵</button>
+  <!-- Card Info Modal -->
+  <div class="card-info-modal" id="card-info-modal" onclick="closeCardInfo()">
+    <div class="card-info-box" onclick="event.stopPropagation()">
+      <div class="ci-icon" id="ci-icon">🃏</div>
+      <div class="ci-name" id="ci-name"></div>
+      <div class="ci-abil" id="ci-abil"></div>
+      <div class="ci-stats" id="ci-stats"></div>
+      <button class="game-btn" style="margin-top:10px;width:100%;" onclick="closeCardInfo()">סגור</button>
+    </div>
+  </div>
+  <!-- Random Event -->
+  <div class="random-event-overlay" id="event-overlay">
+    <div class="event-box">
+      <div class="event-icon" id="event-icon">⚡</div>
+      <div class="event-title" id="event-title">אירוע אקראי</div>
+      <div class="event-desc" id="event-desc"></div>
+      <div class="event-choices" id="event-choices"></div>
+    </div>
+  </div>
 
   <!-- חנות בין שלבים — overlay -->
   <div id="shop-screen">
@@ -610,7 +680,8 @@ let state = {
   sel: null, hasDrawn: false, drawCount: 0,
   score: 0, enemyTurn: false, aiTurnCount: 0,
   permanentUpgrades: {},
-  startHandSize: 3, // גודל יד פתיחה — ניתן לשדרג בחנות
+  artifacts: [], // חפצים שנאספו מניצחון על בוסים
+  startHandSize: 3,
   stats: { turns: 0, dmgDealt: 0, dmgTaken: 0, cardsPlayed: 0, levelsCleared: 0 }
 };
 
@@ -637,7 +708,8 @@ const DB = {
     { name: 'תותח לייזר', icon: '🛰️', atk: 4, def: 2, cost: 3 },
     { name: 'מגדל פולס',  icon: '📡', atk: 2, def: 5, cost: 3, abil: 'freeze' },
     { name: 'כוח מגן',    icon: '🛡️', atk: 0, def: 10, cost: 4 },
-    { name: 'ספינת סערה', icon: '🚀', atk: 3, def: 3, cost: 3, abil: 'barrage' }
+    { name: 'ספינת סערה', icon: '🚀', atk: 3, def: 3, cost: 3, abil: 'barrage' },
+    { name: 'מגן חי',     icon: '🏰', atk: 1, def: 8, cost: 3, abil: 'taunt' }
   ],
   rebel: [
     { name: 'האקר צל',     icon: '👨‍💻', atk: 2, def: 1, cost: 1 },
@@ -646,67 +718,75 @@ const DB = {
     { name: 'נחש צפע',    icon: '🐍', atk: 4, def: 1, cost: 2 },
     { name: 'פצצת לוגיקה',icon: '💣', atk: 7, def: 1, cost: 4 },
     { name: 'ברק ניאון',  icon: '⚡', atk: 5, def: 1, cost: 3, abil: 'pierce' },
-    { name: 'פורץ מערכות',icon: '💻', atk: 2, def: 2, cost: 2, abil: 'barrage' }
+    { name: 'פורץ מערכות',icon: '💻', atk: 2, def: 2, cost: 2, abil: 'barrage' },
+    { name: 'מסיח דעת',   icon: '🎭', atk: 1, def: 4, cost: 2, abil: 'taunt' }
   ]
 };
 
 // ===== BOSS DEFINITIONS =====
 const BOSSES = [
   {
-    id: 'healer',
-    name: '🧬 NEXUS-PRIME',
-    passive: '♻️ מתחדש: מרפא 5HP בתחילת כל תור',
+    id: 'healer', name: '🧬 NEXUS-PRIME',
+    passive: '♻️ מתחדש: מרפא 5HP בתחילת כל תור | ENRAGE: ריפוי כפול',
     hp: 80,
     onTurnStart: () => {
-      state.eHP = Math.min(state.eMax, state.eHP + 5);
-      log('NEXUS-PRIME מתחדש: +5HP ♻️', 'log-warn');
+      const enraged = state.eHP < state.eMax * 0.4;
+      const heal = enraged ? 10 : 5;
+      state.eHP = Math.min(state.eMax, state.eHP + heal);
+      if (enraged) log(`⚠ NEXUS-PRIME ENRAGE: +${heal}HP!`, 'log-warn');
+      else log(`NEXUS-PRIME מתחדש: +${heal}HP ♻️`, 'log-warn');
     },
-    onDamaged: null,
-    onBelowHalf: null
+    onDamaged: null, onBelowHalf: null
   },
   {
-    id: 'burner',
-    name: '🔥 GHOST-OMEGA',
-    passive: '🔥 נקמה: שורף קלף מהיד בכל פעם שסופג נזק',
-    hp: 65,
-    onTurnStart: null,
+    id: 'burner', name: '🔥 GHOST-OMEGA',
+    passive: '🔥 נקמה: שורף קלף | ENRAGE: שורף 2 קלפים',
+    hp: 65, onTurnStart: null,
     onDamaged: () => {
-      if (state.hand.length > 0) {
+      const enraged = state.eHP < state.eMax * 0.4;
+      const burns = enraged ? 2 : 1;
+      for (let i = 0; i < burns && state.hand.length > 0; i++) {
         const idx = Math.floor(Math.random() * state.hand.length);
         const burned = state.hand.splice(idx, 1)[0];
-        log(`GHOST-OMEGA שרף: ${burned.name} 🔥`, 'log-warn');
-        render();
+        log(`GHOST-OMEGA שרף: ${burned.name}${enraged ? ' 🔥🔥 ENRAGE' : ' 🔥'}`, 'log-warn');
       }
+      render();
     },
     onBelowHalf: null
   },
   {
-    id: 'berserker',
-    name: '⚡ CORE-BERSERK',
-    passive: '⚡ זעם: מכפיל נזק לשחקן כשמתחת ל-50% HP',
-    hp: 70,
-    onTurnStart: null,
-    onDamaged: null,
-    onBelowHalf: (dmg) => dmg * 2
+    id: 'berserker', name: '⚡ CORE-BERSERK',
+    passive: '⚡ זעם: כפל נזק מתחת 50% | ENRAGE: כפל ×3',
+    hp: 70, onTurnStart: null, onDamaged: null,
+    onBelowHalf: (dmg) => {
+      const enraged = state.eHP < state.eMax * 0.4;
+      return enraged ? dmg * 3 : dmg * 2;
+    }
   },
   {
-    id: 'overlord',
-    name: '💀 VOID-OVERLORD',
-    passive: '💀 שלושת האימות: מרפא + שורף קלף + זעם כפול',
+    id: 'overlord', name: '💀 VOID-OVERLORD',
+    passive: '💀 שלושת האימות | ENRAGE: הכל כפול',
     hp: 55,
     onTurnStart: () => {
-      state.eHP = Math.min(state.eMax, state.eHP + 3);
-      log('VOID-OVERLORD מתחדש: +3HP 💀', 'log-warn');
+      const enraged = state.eHP < state.eMax * 0.4;
+      const heal = enraged ? 6 : 3;
+      state.eHP = Math.min(state.eMax, state.eHP + heal);
+      log(`VOID-OVERLORD${enraged ? ' ENRAGE' : ''}: +${heal}HP 💀`, 'log-warn');
     },
     onDamaged: () => {
-      if (state.hand.length > 0) {
+      const enraged = state.eHP < state.eMax * 0.4;
+      const burns = enraged ? 2 : 1;
+      for (let i = 0; i < burns && state.hand.length > 0; i++) {
         const idx = Math.floor(Math.random() * state.hand.length);
         const burned = state.hand.splice(idx, 1)[0];
         log(`VOID-OVERLORD שרף: ${burned.name} 💀`, 'log-warn');
-        render();
       }
+      render();
     },
-    onBelowHalf: (dmg) => Math.ceil(dmg * 2.5)
+    onBelowHalf: (dmg) => {
+      const enraged = state.eHP < state.eMax * 0.4;
+      return enraged ? Math.ceil(dmg * 4) : Math.ceil(dmg * 2.5);
+    }
   }
 ];
 
@@ -723,20 +803,22 @@ function log(m, cls = '') {
 // ===== START GAME =====
 function startGame(faction, boss = false) {
   state.faction = faction;
-  state.pHP = 20; state.pMaxHP = 20;
+  state.pHP = state.pMaxHP; // שמור HP מקסימלי עם שדרוגים
 
-  // בחירת בוס
-  if (boss) {
+  // בוס אוטומטי כל שלב 5
+  const autoBoss = (state.level % 5 === 0);
+  const isBoss = boss || autoBoss;
+
+  if (isBoss) {
     activeBoss = BOSSES[Math.floor(Math.random() * BOSSES.length)];
     state.eMax = activeBoss.hp + state.level * 10;
     const bar = document.getElementById('boss-passive-bar');
     bar.textContent = `👾 ${activeBoss.name}  |  ${activeBoss.passive}`;
     bar.classList.add('active');
-    log(`⚠ בוס זוהה: ${activeBoss.name}`, 'log-warn');
+    log(autoBoss ? `⚠ שלב ${state.level} — בוס אוטומטי: ${activeBoss.name}!` : `⚠ בוס זוהה: ${activeBoss.name}`, 'log-warn');
   } else {
     activeBoss = null;
     document.getElementById('boss-passive-bar').classList.remove('active');
-    // שיפור קושי: HP אויב גדל מהר יותר עם רמה
     state.eMax = 20 + (state.level * 8);
   }
 
@@ -747,10 +829,15 @@ function startGame(faction, boss = false) {
   state.sel = null; state.hasDrawn = false; state.drawCount = 0;
   state.enemyTurn = false; state.aiTurnCount = 0;
   state.stats = { turns: 0, dmgDealt: 0, dmgTaken: 0, cardsPlayed: 0, levelsCleared: state.stats ? state.stats.levelsCleared : 0 };
-  triggeredSynergies = new Set(); // איפוס קריטי לסינרגיה
+  triggeredSynergies = new Set();
+  eventPending = false; // איפוס אירועים
+
+  // החל artifacts פסיביים
+  applyArtifacts();
 
   document.getElementById('game-log').innerHTML = '';
   log('אתחול פרוטוקול ניאון...', 'log-gold');
+  if (state.artifacts.length > 0) log(`⬡ Artifacts פעילים: ${state.artifacts.map(a => a.icon).join(' ')}`, 'log-gold');
 
   const base = DB[faction];
   for (let i = 0; i < 30; i++) {
@@ -784,7 +871,8 @@ function drawCard(isManual = true) {
 
   // Elite כל 5 משיכות
   if (state.drawCount % 5 === 0) {
-    c.atk = Math.ceil(c.atk * 2.5);
+    const mult = hasArtifact('viruscore') ? 3 : 2.5;
+    c.atk = Math.ceil(c.atk * mult);
     c.def = Math.ceil(c.def * 2);
     c.isElite = true;
     c.name = '★ ' + c.name;
@@ -820,6 +908,7 @@ function startTurn() {
   state.stats.turns++;
   state.pField.forEach(c => { c.exhausted = false; });
   if (activeBoss && activeBoss.onTurnStart) activeBoss.onTurnStart();
+  updateSynergy(); // בדוק סינרגיה גם בתחילת תור
   setButtons(false);
   render();
   log(`── תור ${state.stats.turns} │ אנרגיה: ${state.bw} ──`);
@@ -849,7 +938,7 @@ function playCard(i) {
   // יכולות כניסה
   if (c.abil === 'heal') {
     const healed = Math.min(state.pMaxHP - state.pHP, 3);
-    state.pHP += healed;
+    state.pHP = Math.min(state.pMaxHP, state.pHP + healed); // cap at max
     log(`${c.name}: ריפוי מערכת +${healed}HP ✨`);
   }
   if (c.abil === 'freeze' && state.eField.length) {
@@ -946,16 +1035,18 @@ function runEnemyTurn() {
 
   let totalDmg = 0; // מוגדר מחוץ לכל בלוק — מונע ReferenceError
 
-  // ===== LETHAL CHECK =====
+  // ===== LETHAL CHECK — מכבד TAUNT =====
   const activeEnemies = state.eField.filter(c => !c.frozen);
   const totalEnemyAtk = activeEnemies.reduce((s, c) => s + c.atk, 0);
-  if (totalEnemyAtk >= state.pHP && state.pField.length > 0) {
+  const hasTaunt = state.pField.some(p => p.abil === 'taunt' && p.def > 0);
+  if (totalEnemyAtk >= state.pHP && state.pField.length > 0 && !hasTaunt) {
     log('⚠ האויב זיהה LETHAL! תוקף ישירות על הליבה!', 'log-warn');
     activeEnemies.forEach(c => {
       let dmg = c.atk;
       if (activeBoss && activeBoss.onBelowHalf && state.eHP < state.eMax / 2) dmg = activeBoss.onBelowHalf(dmg);
       state.pHP -= dmg; totalDmg += dmg; state.stats.dmgTaken += dmg;
     });
+    state.pHP = Math.max(0, state.pHP); // לא מתחת לאפס
     if (totalDmg > 0) {
       showFloatingDmg(totalDmg, true);
       log(`מכה קטלנית: ${totalDmg} נזק!`, 'log-warn');
@@ -978,10 +1069,19 @@ function runEnemyTurn() {
     // defenders מתרענן בכל איטרציה — מונע תקיפת קלף שכבר הושמד
     const defenders = state.pField.filter(p => p.def > 0);
     if (defenders.length > 0) {
-      const target = useAggressiveAI
-        ? defenders.reduce((a, b) => a.atk >= b.atk ? a : b)
-        : defenders.reduce((a, b) => a.def <= b.def ? a : b);
-      log(`${c.name} ${useAggressiveAI ? 'מכוון לאיום' : 'תוקף תורפה'}: ${target.name}`);
+      // Taunt — חייב לתקוף קלף עם taunt אם קיים
+      const taunters = defenders.filter(p => p.abil === 'taunt');
+      let target;
+      if (taunters.length > 0) {
+        target = taunters[0];
+        log(`${c.name} נמשך ל-TAUNT: ${target.name} 🏰`);
+      } else if (useAggressiveAI) {
+        target = defenders.reduce((a, b) => a.atk >= b.atk ? a : b);
+        log(`${c.name} מכוון לאיום: ${target.name}`);
+      } else {
+        target = defenders.reduce((a, b) => a.def <= b.def ? a : b);
+        log(`${c.name} תוקף תורפה: ${target.name}`);
+      }
       const dmg = Math.max(0, c.atk - target.def);
       target.def -= c.atk;
       if (target.def <= 0) {
@@ -1009,7 +1109,59 @@ function runEnemyTurn() {
   if (!check()) { autosave(); setButtons(false); startTurn(); }
 }
 
-// ===== STATS RENDERER =====
+// ===== ARTIFACTS SYSTEM =====
+const ARTIFACT_POOL = [
+  { id: 'battery',   icon: '🔋', name: 'סוללת קוונטום', desc: '+2 אנרגיה קבועה כל שלב', passive: (s) => { s.permanentUpgrades.energy = (s.permanentUpgrades.energy||0) + 2; } },
+  { id: 'nanoshield',icon: '🛡️', name: 'מגן ננו',        desc: 'מתחיל כל שלב עם +10 HP', passive: (s) => { s.pHP = Math.min(s.pMaxHP, s.pHP + 10); } },
+  { id: 'datacube',  icon: '💾', name: 'קוביית נתונים',  desc: '+3 לנזק כל הקלפים',      passive: (s) => { s.permanentUpgrades.atk = (s.permanentUpgrades.atk||0) + 3; } },
+  { id: 'viruscore', icon: '🦠', name: 'ליבת וירוס',     desc: 'כל קלף ELITE חזק פי 3',  passive: null }, // מופעל בdrawCard
+  { id: 'prism',     icon: '💠', name: 'פריזמה',          desc: 'סינרגיה מ-2 קלפים (לא 3)', passive: null }, // מופעל בcheckSynergy
+  { id: 'overclock', icon: '⚡', name: 'אוברקלוק',        desc: '+1 קלף פתיחה לתמיד',     passive: (s) => { s.startHandSize = (s.startHandSize||3) + 1; } }
+];
+
+function applyArtifacts() {
+  state.artifacts.forEach(art => {
+    const def = ARTIFACT_POOL.find(a => a.id === art.id);
+    if (def && def.passive) def.passive(state);
+  });
+}
+
+function hasArtifact(id) {
+  return state.artifacts.some(a => a.id === id);
+}
+
+function grantArtifact() {
+  // בחר artifact שעדיין לא יש לשחקן
+  const available = ARTIFACT_POOL.filter(a => !hasArtifact(a.id));
+  if (!available.length) return;
+
+  // הצג 2 אפשרויות לבחירה
+  const choices = available.sort(() => Math.random()-0.5).slice(0, 2);
+  showArtifactChoice(choices);
+}
+
+function showArtifactChoice(choices) {
+  const ch = document.getElementById('event-choices');
+  document.getElementById('event-icon').textContent = '⬡';
+  document.getElementById('event-title').textContent = 'ARTIFACT — בחר חפץ פסיבי';
+  document.getElementById('event-desc').textContent = 'ניצחת בוס! החפץ שתבחר יישאר לכל שאר המשחק.';
+  ch.innerHTML = '';
+  choices.forEach(art => {
+    const btn = document.createElement('button');
+    btn.className = 'game-btn';
+    btn.style.cssText = 'border-color:var(--elite);color:var(--elite);width:100%;text-align:right;padding:10px 14px;';
+    btn.innerHTML = `${art.icon} <b>${art.name}</b><br><span style="font-size:0.65rem;opacity:0.8">${art.desc}</span>`;
+    btn.onclick = () => {
+      state.artifacts.push({ id: art.id, icon: art.icon, name: art.name });
+      log(`⬡ Artifact נרכש: ${art.icon} ${art.name}!`, 'log-elite');
+      document.getElementById('event-overlay').classList.remove('active');
+      eventPending = false;
+    };
+    ch.appendChild(btn);
+  });
+  document.getElementById('event-overlay').classList.add('active');
+  eventPending = true;
+}
 function renderStats(containerId, color) {
   const el = document.getElementById(containerId);
   if (!el) return;
@@ -1031,6 +1183,7 @@ function saveGameState() {
     permanentUpgrades: state.permanentUpgrades || {},
     startHandSize: state.startHandSize || 3,
     drawCount: state.drawCount,
+    artifacts: state.artifacts || [],
     timestamp: Date.now()
   };
   localStorage.setItem('np_save', JSON.stringify(save));
@@ -1067,17 +1220,23 @@ function check() {
     state.eHP = 0;
     state.stats.levelsCleared++;
     state.score += state.level * 200 + state.pHP * 10;
+    state.level++;
     saveProgress();
     autosave();
     document.getElementById('win-score-line').textContent = `ניקוד: ${state.score} | HP נותר: ${state.pHP}`;
     renderStats('win-stats', 'var(--green)');
     document.getElementById('win-screen').classList.add('active');
+    // Artifact אחרי בוס
+    if (activeBoss) setTimeout(grantArtifact, 600);
     return true;
   }
   if (state.pHP <= 0) {
     state.pHP = 0;
     saveProgress();
     localStorage.removeItem('np_save');
+    state.level = 1;
+    state.score = 0;
+    state.artifacts = []; // איפוס artifacts בהפסד
     document.getElementById('lose-score-line').textContent = `ניקוד: ${state.score} | שלב ${state.level}`;
     renderStats('lose-stats', 'var(--rebel)');
     document.getElementById('lose-screen').classList.add('active');
@@ -1117,7 +1276,7 @@ const SHOP_ITEMS = [
   },
   {
     id: 'emergency_energy', icon: '🔌', name: 'אנרגיה חירום',
-    desc: '+3 אנרגיה בתחילת תור אחד בלבד', cost: 180, maxBuys: 2,
+    desc: '+3 אנרגיה בתחילת תור אחד בלבד', cost: 120, maxBuys: 2,
     effect: () => { state.permanentUpgrades.emergencyEnergy = (state.permanentUpgrades.emergencyEnergy || 0) + 3; }
   },
   {
@@ -1173,10 +1332,10 @@ let shopBuys = {};
 function openShop() {
   shopBuys = {};
   document.getElementById('shop-score').textContent = state.score;
-  document.getElementById('shop-next-level').textContent = state.level;
+  document.getElementById('shop-next-level').textContent = state.level; // כבר הוגדל ב-check()
   renderShop();
-  // חנות היא overlay — לא screen רגיל
   document.getElementById('shop-screen').classList.add('active');
+  setTimeout(maybeShowRandomEvent, 300);
 }
 
 function closeShop() {
@@ -1239,25 +1398,26 @@ function goToShop() {
   openShop();
 }
 
-function goToMainFromShop() {
-  saveProgress();
-  saveGameState();
-  closeShop();
+function updateMainScreen() {
   document.getElementById('main-level-num').textContent = state.level;
   const best = loadProgress();
   document.getElementById('high-score-display').textContent = best.score;
   document.getElementById('best-level-display').textContent = best.level;
   document.getElementById('run-score-display').textContent = state.score;
+  const ab = document.getElementById('artifact-bar');
+  if (ab) ab.textContent = state.artifacts.map(a => a.icon).join(' ');
+}
+
+function goToMainFromShop() {
+  saveProgress(); saveGameState();
+  closeShop();
+  updateMainScreen();
   showScreen('title-screen');
 }
 
 function goToMainFromWin() {
   document.querySelectorAll('.result-overlay').forEach(o => o.classList.remove('active'));
-  document.getElementById('main-level-num').textContent = state.level;
-  const best = loadProgress();
-  document.getElementById('high-score-display').textContent = best.score;
-  document.getElementById('best-level-display').textContent = best.level;
-  document.getElementById('run-score-display').textContent = state.score;
+  updateMainScreen();
   showScreen('title-screen');
 }
 
@@ -1270,7 +1430,7 @@ function render() {
   document.getElementById('player-hp-fill').style.width = Math.max(0, (state.pHP / state.pMaxHP * 100)) + '%';
   document.getElementById('enemy-hp-fill').style.width = Math.max(0, (state.eHP / state.eMax * 100)) + '%';
 
-  // אנרגיה - מספרים
+  // אנרגיה - מספרים (מקסימום = bwMax-1 כי bwMax מוגדל בתחילת תור הבא)
   const curMax = Math.min(10, state.bwMax - 1);
   const ed = document.getElementById('energy-display');
   ed.innerHTML = `${state.bw}<span class="e-max">/${curMax}</span>`;
@@ -1301,24 +1461,45 @@ function render() {
     const d = createCardUI(c, false);
     if (state.sel === i) d.classList.add('selected');
     if (c.exhausted) d.classList.add('exhausted');
-    // הדגשת קלפי סינרגיה
     if (c.abil && activeSynergy[c.abil]) d.classList.add('synergy');
+    if (c.abil === 'taunt') d.classList.add('taunt');
     if (!c.exhausted && !state.enemyTurn) {
-      d.onclick = () => { state.sel = (state.sel === i ? null : i); render(); };
+      d.onclick = () => {
+        if (state.sel === i) {
+          // לחיצה שנייה על קלף נבחר — פתח מידע
+          showCardInfo(c);
+        } else {
+          state.sel = i;
+          render();
+        }
+      };
     }
     if (c.isNew) { d.classList.add('entering'); c.isNew = false; }
+    attachTooltip(d, c);
     pf.appendChild(d);
   });
 
   // שדה אויב
   const ef = document.getElementById('enemy-field');
   ef.innerHTML = '';
+  const bossEnraged = activeBoss && state.eHP < state.eMax * 0.4;
   state.eField.forEach(c => {
     const d = createCardUI(c, true);
     if (c.frozen) d.classList.add('frozen');
-    if (activeBoss) d.classList.add('boss-card');
+    if (activeBoss) { d.classList.add('boss-card'); if (bossEnraged) d.classList.add('enraged'); }
     ef.appendChild(d);
   });
+
+  // Enrage indicator
+  const bar = document.getElementById('boss-passive-bar');
+  if (activeBoss) {
+    const enraged = state.eHP < state.eMax * 0.4;
+    bar.style.background = enraged ? 'rgba(255,0,0,0.15)' : 'rgba(255,174,0,0.08)';
+    bar.style.borderColor = enraged ? 'rgba(255,0,0,0.5)' : 'rgba(255,174,0,0.3)';
+    if (enraged && !bar.textContent.includes('ENRAGE')) {
+      bar.textContent = `🔴 ENRAGE! ${activeBoss.name}`;
+    }
+  }
 
   // hints
   document.getElementById('player-hint').style.display = state.pField.length ? 'none' : 'flex';
@@ -1339,7 +1520,7 @@ function createCardUI(c, isEnemy) {
   d.className = 'card' + (c.isElite ? ' elite' : '');
   d.style.borderColor = c.faction === 'corp' ? 'var(--corp)' : 'var(--rebel)';
 
-  const abilIcon = c.abil === 'heal' ? '✨' : c.abil === 'pierce' ? '🎯' : c.abil === 'freeze' ? '❄️' : c.abil === 'barrage' ? '💥' : '';
+  const abilIcon = c.abil === 'heal' ? '✨' : c.abil === 'pierce' ? '🎯' : c.abil === 'freeze' ? '❄️' : c.abil === 'barrage' ? '💥' : c.abil === 'taunt' ? '🏰' : '';
 
   d.innerHTML = `
     <div class="ability-icon">${abilIcon}</div>
@@ -1365,15 +1546,8 @@ function showScreen(id) {
 }
 
 function resetToMain(win) {
-  // win מטופל ע"י openShop() — כאן רק הפסד
-  state.score = 0;
-  state.level = 1;
-  document.getElementById('main-level-num').textContent = state.level;
   document.querySelectorAll('.result-overlay').forEach(o => o.classList.remove('active'));
-  const best = loadProgress();
-  document.getElementById('high-score-display').textContent = best.score;
-  document.getElementById('best-level-display').textContent = best.level;
-  document.getElementById('run-score-display').textContent = 0;
+  updateMainScreen();
   showScreen('title-screen');
 }
 
@@ -1389,11 +1563,15 @@ function resetToMain(win) {
     state.level = saved.level || 1;
     state.score = saved.score || 0;
     state.pMaxHP = saved.pMaxHP || 20;
+    state.pHP = saved.pHP || 20;
     state.permanentUpgrades = saved.permanentUpgrades || {};
     state.startHandSize = saved.startHandSize || 3;
     state.drawCount = saved.drawCount || 0;
+    state.artifacts = saved.artifacts || [];
     document.getElementById('main-level-num').textContent = state.level;
     document.getElementById('run-score-display').textContent = state.score;
+    const ab = document.getElementById('artifact-bar');
+    if (ab && state.artifacts.length) ab.textContent = state.artifacts.map(a => a.icon).join(' ');
   } else {
     document.getElementById('run-score-display').textContent = 0;
   }
@@ -1401,16 +1579,17 @@ function resetToMain(win) {
 
 // ===== SYNERGY SYSTEM =====
 const SYNERGY_THRESHOLD = 3;
-let triggeredSynergies = new Set(); // עוקב אחר סינרגיות שכבר הופעלו בשלב הנוכחי
+let triggeredSynergies = new Set();
 
 function checkSynergy() {
+  const threshold = hasArtifact('prism') ? 2 : 3;
   const counts = {};
   state.pField.forEach(c => {
     if (c.abil) counts[c.abil] = (counts[c.abil] || 0) + 1;
   });
   const active = {};
   Object.entries(counts).forEach(([abil, n]) => {
-    if (n >= SYNERGY_THRESHOLD) active[abil] = n;
+    if (n >= threshold) active[abil] = n;
   });
   return active;
 }
@@ -1444,17 +1623,122 @@ function triggerSynergyEffect(abil) {
 
 function updateSynergy() {
   const active = checkSynergy();
-  // הפעל רק סינרגיות שעדיין לא הופעלו בשלב הזה
   Object.keys(active).forEach(abil => {
     if (!triggeredSynergies.has(abil)) {
       triggeredSynergies.add(abil);
       triggerSynergyEffect(abil);
     }
   });
+  // אפס סינרגיות שנשברו (פחות מ-3 קלפים) כדי שיוכלו להופעל מחדש
+  triggeredSynergies.forEach(abil => {
+    if (!active[abil]) triggeredSynergies.delete(abil);
+  });
   return active;
 }
 
-// ===== SYNTHWAVE MUSIC ENGINE =====
+// ===== CARD INFO MODAL =====
+const ABIL_DESC = {
+  heal:    '✨ ריפוי — +3HP בכניסה לשדה',
+  pierce:  '🎯 חדירה — מתעלם מהגנת האויב',
+  freeze:  '❄️ הקפאה — מבטל קלף אויב לתור',
+  barrage: '💥 מטח — תוקף כל קלפי האויב',
+  taunt:   '🏰 פיתיון — האויב חייב לתקוף קלף זה'
+};
+
+function showCardInfo(c) {
+  document.getElementById('ci-icon').textContent = c.icon;
+  document.getElementById('ci-name').textContent = c.name;
+  document.getElementById('ci-abil').textContent = c.abil ? ABIL_DESC[c.abil] : 'אין יכולת מיוחדת';
+  document.getElementById('ci-stats').textContent = `⚔️ ${c.atk}  🛡️ ${c.def}  ★ ${c.cost}`;
+  document.getElementById('card-info-modal').classList.add('active');
+}
+
+function closeCardInfo() {
+  document.getElementById('card-info-modal').classList.remove('active');
+}
+
+function attachTooltip(el, c) {
+  // אין tooltip במשחק — card info נפתח ע"י לחיצה שנייה על קלף נבחר
+}
+
+function hideTooltip() {} // נשאר ריק למניעת errors
+
+// ===== RANDOM EVENTS =====
+const RANDOM_EVENTS = [
+  {
+    icon: '💰', title: 'הצעת שוחד',
+    desc: 'גורם עלום מציע לך עסקה מפוקפקת...',
+    choices: [
+      { text: '💸 קבל 300 ניקוד, אבד 5HP', effect: () => { state.score += 300; state.pHP = Math.max(1, state.pHP - 5); } },
+      { text: '❌ דחה', effect: () => log('דחית את ההצעה.') }
+    ]
+  },
+  {
+    icon: '⚗️', title: 'מעבדה נסתרת',
+    desc: 'מצאת מעבדה. תוכל לשדרג קלף אקראי.',
+    choices: [
+      { text: '🧪 שדרג קלף מהחפיסה', effect: () => {
+        if (state.pDeck.length) {
+          const idx = Math.floor(Math.random() * state.pDeck.length);
+          state.pDeck[idx].atk += 2; state.pDeck[idx].def += 2;
+          log(`שודרג: ${state.pDeck[idx].name} +2/+2`, 'log-gold');
+        }
+      }},
+      { text: '🚶 המשך הלאה', effect: () => log('עברת על המעבדה.') }
+    ]
+  },
+  {
+    icon: '☠️', title: 'הימור גורל',
+    desc: '50/50 — או 400 ניקוד, או 8 נזק.',
+    choices: [
+      { text: '🎲 הסתכן!', effect: () => {
+        if (Math.random() > 0.5) { state.score += 400; log('הימור הצליח! +400 ניקוד 🎲', 'log-gold'); }
+        else { state.pHP = Math.max(1, state.pHP - 8); log('הימור נכשל! -8HP ☠️', 'log-warn'); }
+      }},
+      { text: '🏃 ברח', effect: () => log('ברחת בזמן.') }
+    ]
+  },
+  {
+    icon: '🏥', title: 'עמדת חירום',
+    desc: 'מצאת עמדת רפואה נטושה. ריפוי מלא!',
+    choices: [
+      { text: '💉 התרפא (+HP מלא)', effect: () => { state.pHP = state.pMaxHP; log('HP מלא! 💉', 'log-gold'); } }
+    ]
+  }
+];
+
+let eventPending = false;
+
+function maybeShowRandomEvent() {
+  // אירוע אקראי כל 3 שלבים בסיכוי 60%
+  if (state.level % 3 === 0 && Math.random() < 0.6 && !eventPending) {
+    eventPending = true;
+    const ev = RANDOM_EVENTS[Math.floor(Math.random() * RANDOM_EVENTS.length)];
+    showRandomEvent(ev);
+  }
+}
+
+function showRandomEvent(ev) {
+  document.getElementById('event-icon').textContent = ev.icon;
+  document.getElementById('event-title').textContent = ev.title;
+  document.getElementById('event-desc').textContent = ev.desc;
+  const ch = document.getElementById('event-choices');
+  ch.innerHTML = '';
+  ev.choices.forEach(choice => {
+    const btn = document.createElement('button');
+    btn.className = 'game-btn';
+    btn.style.cssText = 'border-color:var(--boss);color:var(--boss);width:100%;';
+    btn.textContent = choice.text;
+    btn.onclick = () => {
+      choice.effect();
+      document.getElementById('event-overlay').classList.remove('active');
+      eventPending = false;
+      render();
+    };
+    ch.appendChild(btn);
+  });
+  document.getElementById('event-overlay').classList.add('active');
+}
 let audioCtx = null;
 let musicPlaying = false;
 let musicNodes = [];
@@ -1597,4 +1881,3 @@ function toggleMusic() {
 </script>
 </body>
 </html>
-פה עצרתי עד שעה 23.00
