@@ -167,8 +167,10 @@ body::before {
   padding: 5px; position: relative; cursor:pointer;
   transition: transform 0.15s, box-shadow 0.15s;
 }
-.card:hover { transform: translateY(-4px); }
-.hand-area .card:hover { transform: translateY(-6px) scale(1.05); }
+.card { transition: transform 0.15s, box-shadow 0.15s; }
+.card:hover { transform: none; } /* ביטול hover גלובלי — נשלט ע"י JS */
+.card.can-interact:hover { transform: translateY(-4px); }
+.hand-area .card.can-interact:hover { transform: translateY(-6px) scale(1.05); }
 .card.selected {
   transform: translateY(-10px) !important;
   border-color: var(--gold) !important;
@@ -197,6 +199,21 @@ body::before {
   border-color: var(--gold) !important;
   box-shadow: 0 0 10px rgba(255,215,0,0.5);
 }
+.card.spell-card {
+  border-style: dashed !important;
+  background: linear-gradient(160deg, #0a1a10 0%, #050d08 100%) !important;
+}
+.card.spell-card .card-icon::after {
+  content: 'SPELL'; position:absolute; bottom:22px;
+  font-size:0.4rem; color:var(--green); font-family:'Share Tech Mono';
+  letter-spacing:1px; opacity:0.8;
+}
+.crit-flash {
+  position:fixed; inset:0; background:rgba(255,215,0,0.15);
+  pointer-events:none; z-index:8000;
+  animation: critFade 0.4s ease-out forwards;
+}
+@keyframes critFade { from{opacity:1;} to{opacity:0;} }
 .card.enraged {
   animation: enrageFlicker 0.5s ease-in-out infinite !important;
 }
@@ -528,8 +545,9 @@ body::before {
     <!-- Status bar -->
     <div class="status-bar">
       <span>⚡ <span id="energy-display" class="energy-display">0<span class="e-max">/0</span></span></span>
+      <span>🎯 <span id="crit-display" style="color:var(--gold)">10%</span></span>
       <span>🧧 ELITE: <span id="draw-counter" style="color:var(--elite)">0/5</span></span>
-      <span>🗃️ <span id="deck-count" style="color:var(--gold)">0</span> 🪦 <span id="grave-count" style="color:rgba(200,216,240,0.5)">0</span> &nbsp;|&nbsp; <span class="score-live">★ <span id="score-live">0</span></span></span>
+      <span>★ <span id="score-live" style="color:var(--gold)">0</span></span>
     </div>
     <!-- Boss passive indicator -->
     <div class="boss-passive-bar" id="boss-passive-bar"></div>
@@ -680,7 +698,8 @@ let state = {
   sel: null, hasDrawn: false, drawCount: 0,
   score: 0, enemyTurn: false, aiTurnCount: 0,
   permanentUpgrades: {},
-  artifacts: [], // חפצים שנאספו מניצחון על בוסים
+  artifacts: [],
+  critChance: 0.10, // 10% בסיסי, ניתן לשדרוג
   startHandSize: 3,
   stats: { turns: 0, dmgDealt: 0, dmgTaken: 0, cardsPlayed: 0, levelsCleared: 0 }
 };
@@ -702,24 +721,32 @@ function loadProgress() {
 // ===== DATABASE =====
 const DB = {
   corp: [
-    { name: 'סוכן פלדה',  icon: '🤖', atk: 1, def: 3, cost: 1 },
-    { name: 'קיר אש',     icon: '🧱', atk: 0, def: 7, cost: 2 },
-    { name: 'רחפן תיקון', icon: '🔧', atk: 1, def: 2, cost: 2, abil: 'heal' },
-    { name: 'תותח לייזר', icon: '🛰️', atk: 4, def: 2, cost: 3 },
-    { name: 'מגדל פולס',  icon: '📡', atk: 2, def: 5, cost: 3, abil: 'freeze' },
-    { name: 'כוח מגן',    icon: '🛡️', atk: 0, def: 10, cost: 4 },
-    { name: 'ספינת סערה', icon: '🚀', atk: 3, def: 3, cost: 3, abil: 'barrage' },
-    { name: 'מגן חי',     icon: '🏰', atk: 1, def: 8, cost: 3, abil: 'taunt' }
+    { name: 'סוכן פלדה',   icon: '🤖', atk: 1, def: 3, cost: 1 },
+    { name: 'קיר אש',      icon: '🧱', atk: 0, def: 7, cost: 2 },
+    { name: 'רחפן תיקון',  icon: '🔧', atk: 1, def: 2, cost: 2, abil: 'heal' },
+    { name: 'תותח לייזר',  icon: '🛰️', atk: 4, def: 2, cost: 3 },
+    { name: 'מגדל פולס',   icon: '📡', atk: 2, def: 5, cost: 3, abil: 'freeze' },
+    { name: 'כוח מגן',     icon: '🛡️', atk: 0, def: 10, cost: 4 },
+    { name: 'ספינת סערה',  icon: '🚀', atk: 3, def: 3, cost: 3, abil: 'barrage' },
+    { name: 'מגן חי',      icon: '🏰', atk: 1, def: 8, cost: 3, abil: 'taunt' },
+    // Spells — לא תופסים שדה
+    { name: 'מגן חירום',   icon: '🔵', atk: 0, def: 0, cost: 2, abil: 'spell_shield', spell: true },
+    { name: 'קרח סייבר',   icon: '❄️', atk: 0, def: 0, cost: 1, abil: 'spell_freeze', spell: true },
+    { name: 'פולס EMP',    icon: '💥', atk: 8, def: 0, cost: 4, abil: 'spell_damage', spell: true }
   ],
   rebel: [
     { name: 'האקר צל',     icon: '👨‍💻', atk: 2, def: 1, cost: 1 },
     { name: 'וירוס קטלני', icon: '🦠', atk: 3, def: 1, cost: 2 },
     { name: 'מתנקש',       icon: '🥷', atk: 3, def: 2, cost: 2, abil: 'pierce' },
-    { name: 'נחש צפע',    icon: '🐍', atk: 4, def: 1, cost: 2 },
-    { name: 'פצצת לוגיקה',icon: '💣', atk: 7, def: 1, cost: 4 },
-    { name: 'ברק ניאון',  icon: '⚡', atk: 5, def: 1, cost: 3, abil: 'pierce' },
-    { name: 'פורץ מערכות',icon: '💻', atk: 2, def: 2, cost: 2, abil: 'barrage' },
-    { name: 'מסיח דעת',   icon: '🎭', atk: 1, def: 4, cost: 2, abil: 'taunt' }
+    { name: 'נחש צפע',     icon: '🐍', atk: 4, def: 1, cost: 2 },
+    { name: 'פצצת לוגיקה', icon: '💣', atk: 7, def: 1, cost: 4 },
+    { name: 'ברק ניאון',   icon: '⚡', atk: 5, def: 1, cost: 3, abil: 'pierce' },
+    { name: 'פורץ מערכות', icon: '💻', atk: 2, def: 2, cost: 2, abil: 'barrage' },
+    { name: 'מסיח דעת',    icon: '🎭', atk: 1, def: 4, cost: 2, abil: 'taunt' },
+    // Spells
+    { name: 'פצצת ארגון',  icon: '🔴', atk: 5, def: 0, cost: 3, abil: 'spell_damage', spell: true },
+    { name: 'קרח סייבר',   icon: '❄️', atk: 0, def: 0, cost: 1, abil: 'spell_freeze', spell: true },
+    { name: 'הקפצת מגן',   icon: '🟢', atk: 0, def: 0, cost: 2, abil: 'spell_shield', spell: true }
   ]
 };
 
@@ -834,6 +861,9 @@ function startGame(faction, boss = false) {
 
   // החל artifacts פסיביים
   applyArtifacts();
+  // שחזר crit chance מ-upgrades
+  const critLvl = (state.permanentUpgrades && state.permanentUpgrades.crit) || 0;
+  state.critChance = 0.10 + critLvl * 0.10;
 
   document.getElementById('game-log').innerHTML = '';
   log('אתחול פרוטוקול ניאון...', 'log-gold');
@@ -929,6 +959,19 @@ function playCard(i) {
   const c = state.hand[i];
   if (!c) return;
   if (c.cost > state.bw) { log(`אין מספיק אנרגיה! (נדרש: ${c.cost})`, 'log-warn'); return; }
+
+  // Spell — לא תופס שדה, מופעל מיד ונעלם
+  if (c.spell) {
+    state.bw -= c.cost;
+    state.hand.splice(i, 1);
+    state.stats.cardsPlayed++;
+    castSpell(c);
+    state.graveyard.push({ ...c });
+    state.score += c.cost * 8;
+    render();
+    return;
+  }
+
   if (state.pField.length >= MAX_FIELD) { log('השדה מלא! (מקסימום 5 קלפים)', 'log-warn'); return; }
 
   state.bw -= c.cost;
@@ -964,23 +1007,60 @@ function playCard(i) {
   render();
 }
 
-// ===== ATTACK =====
+// ===== SPELL CASTING =====
+function castSpell(c) {
+  if (c.abil === 'spell_damage') {
+    // נזק לכל השדה
+    const dmg = c.atk;
+    state.eField = state.eField.map(e => { e.def -= dmg; return e; })
+      .filter(e => { if (e.def <= 0) { state.graveyard.push(e); state.score += 30; return false; } return true; });
+    state.eHP -= dmg;
+    state.stats.dmgDealt += dmg;
+    log(`✨ ${c.name}: ${dmg} נזק לכל השדה!`, 'log-warn');
+    showFloatingDmg(dmg, false, 'var(--green)');
+  }
+  if (c.abil === 'spell_freeze') {
+    state.eField.forEach(e => { e.frozen = true; });
+    log(`✨ ${c.name}: כל האויבים הוקפאו! ❄️`, 'log-elite');
+  }
+  if (c.abil === 'spell_shield') {
+    state.pField.forEach(p => { p.def += 3; });
+    state.pHP = Math.min(state.pMaxHP, state.pHP + 5);
+    log(`✨ ${c.name}: +3 הגנה לכולם, +5HP 🔵`);
+  }
+  check();
+}
+
+// ===== CRIT HELPER =====
+function rollCrit() {
+  return Math.random() < (state.critChance || 0.10);
+}
+
+function showCritFlash() {
+  const el = document.createElement('div');
+  el.className = 'crit-flash';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 400);
+}
 function doAttack() {
   if (state.sel === null || state.enemyTurn) return;
   const c = state.pField[state.sel];
   if (!c || c.exhausted) return;
 
+  const isCrit = rollCrit();
+  const critMult = isCrit ? 2 : 1;
+  if (isCrit) { showCritFlash(); log(`💥 CRITICAL HIT! נזק כפול!`, 'log-gold'); }
+
   if (c.abil === 'pierce') {
-    state.eHP -= c.atk;
-    state.stats.dmgDealt += c.atk;
-    log(`${c.name}: חדירה! נזק ישיר ${c.atk} לליבה 🎯`, 'log-warn');
-    state.score += c.atk * 15;
+    const dmg = c.atk * critMult;
+    state.eHP -= dmg; state.stats.dmgDealt += dmg;
+    log(`${c.name}: חדירה! נזק ישיר ${dmg} לליבה 🎯`, 'log-warn');
+    state.score += dmg * 15;
     if (activeBoss && activeBoss.onDamaged) activeBoss.onDamaged();
   } else if (state.eField.length > 0) {
     const target = state.eField[0];
-    const dmg = c.atk;
-    target.def -= dmg;
-    state.stats.dmgDealt += dmg;
+    const dmg = c.atk * critMult;
+    target.def -= dmg; state.stats.dmgDealt += dmg;
     log(`${c.name} תוקף ${target.name} (${dmg} נזק, ${Math.max(0, target.def)} הגנה נשארת)`);
     if (target.def <= 0) {
       state.graveyard.push({ ...target });
@@ -989,10 +1069,10 @@ function doAttack() {
       state.score += 50;
     }
   } else {
-    state.eHP -= c.atk;
-    state.stats.dmgDealt += c.atk;
-    log(`${c.name}: נזק ישיר לליבה ${c.atk}`, 'log-warn');
-    state.score += c.atk * 12;
+    const dmg = c.atk * critMult;
+    state.eHP -= dmg; state.stats.dmgDealt += dmg;
+    log(`${c.name}: נזק ישיר לליבה ${dmg}`, 'log-warn');
+    state.score += dmg * 12;
     if (activeBoss && activeBoss.onDamaged) activeBoss.onDamaged();
   }
 
@@ -1324,6 +1404,15 @@ const PERMANENT_UPGRADES = [
       state.permanentUpgrades.hand = (state.permanentUpgrades.hand || 0) + 1;
       state.startHandSize = 3 + (state.permanentUpgrades.hand || 0);
     }
+  },
+  {
+    id: 'perm_crit', icon: '🎯', name: '+מזל (Crit)',
+    desc: '+10% סיכוי מכה קריטית לתמיד', cost: 550, maxBuys: 3, permanent: true,
+    effect: () => {
+      state.permanentUpgrades = state.permanentUpgrades || {};
+      state.permanentUpgrades.crit = (state.permanentUpgrades.crit || 0) + 1;
+      state.critChance = 0.10 + (state.permanentUpgrades.crit * 0.10);
+    }
   }
 ];
 
@@ -1347,15 +1436,17 @@ function renderShop() {
   grid.innerHTML = '';
   document.getElementById('shop-score').textContent = state.score;
   const pu = state.permanentUpgrades || {};
+  // Scaling: מחיר גדל עם רמה כל 3 שלבים
+  const priceScale = Math.ceil(state.level / 3);
 
   const allItems = [...SHOP_ITEMS, ...PERMANENT_UPGRADES];
   allItems.forEach(item => {
+    const scaledCost = item.permanent ? item.cost : item.cost * priceScale;
     const bought = shopBuys[item.id] || 0;
-    // עבור שדרוגים קבועים — בדוק כמה נקנו סה"כ
     const permBought = item.permanent ? (pu[item.id.replace('perm_','')] || 0) : 0;
     const totalBought = bought + permBought;
     const soldOut = totalBought >= item.maxBuys;
-    const cantAfford = state.score < item.cost && !soldOut;
+    const cantAfford = state.score < scaledCost && !soldOut;
 
     const el = document.createElement('div');
     el.className = 'shop-item' + (soldOut ? ' sold-out' : cantAfford ? ' cant-afford' : '');
@@ -1367,23 +1458,24 @@ function renderShop() {
       <div class="shop-icon">${item.icon}</div>
       <div class="shop-name">${item.name}</div>
       <div class="shop-desc">${item.desc}${item.permanent && totalBought > 0 ? ` (${totalBought}/${item.maxBuys})` : ''}</div>
-      <div class="shop-cost">${soldOut ? '—' : `★ ${item.cost}`}</div>
+      <div class="shop-cost">${soldOut ? '—' : `★ ${scaledCost}`}</div>
     `;
 
-    if (!soldOut && !cantAfford) el.onclick = () => buyItem(item);
+    if (!soldOut && !cantAfford) el.onclick = () => buyItem(item, scaledCost);
     grid.appendChild(el);
   });
 }
 
-function buyItem(item) {
-  if (state.score < item.cost) return;
+function buyItem(item, scaledCost) {
+  const cost = scaledCost !== undefined ? scaledCost : item.cost;
+  if (state.score < cost) return;
   const bought = shopBuys[item.id] || 0;
   if (bought >= item.maxBuys) return;
-  state.score -= item.cost;
+  state.score -= cost;
   shopBuys[item.id] = bought + 1;
   item.effect();
   log(`נקנה: ${item.name}`, 'log-gold');
-  saveGameState(); // autosave אחרי קנייה
+  saveGameState();
   renderShop();
 }
 
@@ -1430,17 +1522,18 @@ function render() {
   document.getElementById('player-hp-fill').style.width = Math.max(0, (state.pHP / state.pMaxHP * 100)) + '%';
   document.getElementById('enemy-hp-fill').style.width = Math.max(0, (state.eHP / state.eMax * 100)) + '%';
 
-  // אנרגיה - מספרים (מקסימום = bwMax-1 כי bwMax מוגדל בתחילת תור הבא)
-  const curMax = Math.min(10, state.bwMax - 1);
+  // אנרגיה — curMax הוא מה שיש עכשיו, לא מה שיהיה בתור הבא
+  const energyBonus = (state.permanentUpgrades && state.permanentUpgrades.energy) || 0;
+  const curMax = Math.min(10, (state.bwMax - 1) + energyBonus);
   const ed = document.getElementById('energy-display');
   ed.innerHTML = `${state.bw}<span class="e-max">/${curMax}</span>`;
 
   // counters
   const eliteProgress = state.drawCount % 5;
   document.getElementById('draw-counter').textContent = `${eliteProgress}/5`;
-  document.getElementById('deck-count').textContent = state.pDeck.length;
-  document.getElementById('grave-count').textContent = state.graveyard.length;
   document.getElementById('score-live').textContent = state.score;
+  const critEl = document.getElementById('crit-display');
+  if (critEl) critEl.textContent = Math.round((state.critChance||0.1)*100) + '%';
 
   // יד
   const h = document.getElementById('player-hand');
@@ -1449,6 +1542,7 @@ function render() {
     const d = createCardUI(c, false);
     const affordable = c.cost <= state.bw && !state.enemyTurn;
     if (!affordable) d.style.opacity = '0.5';
+    else d.classList.add('can-interact');
     d.onclick = () => playCard(i);
     h.appendChild(d);
   });
@@ -1464,14 +1558,10 @@ function render() {
     if (c.abil && activeSynergy[c.abil]) d.classList.add('synergy');
     if (c.abil === 'taunt') d.classList.add('taunt');
     if (!c.exhausted && !state.enemyTurn) {
+      d.classList.add('can-interact');
       d.onclick = () => {
-        if (state.sel === i) {
-          // לחיצה שנייה על קלף נבחר — פתח מידע
-          showCardInfo(c);
-        } else {
-          state.sel = i;
-          render();
-        }
+        if (state.sel === i) { showCardInfo(c); }
+        else { state.sel = i; render(); }
       };
     }
     if (c.isNew) { d.classList.add('entering'); c.isNew = false; }
@@ -1517,10 +1607,11 @@ function render() {
 // ===== CREATE CARD UI =====
 function createCardUI(c, isEnemy) {
   const d = document.createElement('div');
-  d.className = 'card' + (c.isElite ? ' elite' : '');
-  d.style.borderColor = c.faction === 'corp' ? 'var(--corp)' : 'var(--rebel)';
+  let cls = 'card' + (c.isElite ? ' elite' : '') + (c.spell ? ' spell-card' : '');
+  d.className = cls;
+  d.style.borderColor = c.spell ? 'var(--green)' : c.faction === 'corp' ? 'var(--corp)' : 'var(--rebel)';
 
-  const abilIcon = c.abil === 'heal' ? '✨' : c.abil === 'pierce' ? '🎯' : c.abil === 'freeze' ? '❄️' : c.abil === 'barrage' ? '💥' : c.abil === 'taunt' ? '🏰' : '';
+  const abilIcon = c.abil === 'heal' ? '✨' : c.abil === 'pierce' ? '🎯' : c.abil === 'freeze' ? '❄️' : c.abil === 'barrage' ? '💥' : c.abil === 'taunt' ? '🏰' : c.spell ? '✦' : '';
 
   d.innerHTML = `
     <div class="ability-icon">${abilIcon}</div>
@@ -1528,8 +1619,8 @@ function createCardUI(c, isEnemy) {
     <div class="card-icon">${c.icon}</div>
     <div class="card-name">${c.name}</div>
     <div class="card-stats">
-      <span style="color:var(--rebel)">${c.atk}⚔️</span>
-      <span style="color:var(--corp)">${c.def}🛡️</span>
+      <span style="color:var(--rebel)">${c.atk > 0 ? c.atk + '⚔️' : ''}</span>
+      <span style="color:var(--corp)">${c.def > 0 ? c.def + '🛡️' : ''}</span>
     </div>
     ${c.frozen ? '<div class="frozen-overlay"></div>' : ''}
   `;
@@ -1638,11 +1729,14 @@ function updateSynergy() {
 
 // ===== CARD INFO MODAL =====
 const ABIL_DESC = {
-  heal:    '✨ ריפוי — +3HP בכניסה לשדה',
-  pierce:  '🎯 חדירה — מתעלם מהגנת האויב',
-  freeze:  '❄️ הקפאה — מבטל קלף אויב לתור',
-  barrage: '💥 מטח — תוקף כל קלפי האויב',
-  taunt:   '🏰 פיתיון — האויב חייב לתקוף קלף זה'
+  heal:         '✨ ריפוי — +3HP בכניסה לשדה',
+  pierce:       '🎯 חדירה — מתעלם מהגנת האויב',
+  freeze:       '❄️ הקפאה — מבטל קלף אויב לתור',
+  barrage:      '💥 מטח — תוקף כל קלפי האויב',
+  taunt:        '🏰 פיתיון — האויב חייב לתקוף קלף זה',
+  spell_damage: '✦ קסם נזק — פוגע בכל השדה מיד ונעלם',
+  spell_freeze: '✦ קסם קרח — מקפיא את כל האויבים',
+  spell_shield: '✦ קסם מגן — +3 הגנה לכולם +5HP'
 };
 
 function showCardInfo(c) {
@@ -1857,6 +1951,7 @@ function scheduleMusicLoop() {
 
 function startMusic() {
   initAudio();
+  clearTimeout(musicScheduler); // מונע לופים כפולים
   if (audioCtx.state === 'suspended') audioCtx.resume();
   musicPlaying = true;
   scheduleMusicLoop();
@@ -1881,5 +1976,3 @@ function toggleMusic() {
 </script>
 </body>
 </html>
-
-קוד הכי מע
